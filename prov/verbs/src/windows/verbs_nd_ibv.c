@@ -45,6 +45,28 @@ static enum ibv_wc_opcode vrb_ndrequest2opcode(enum ND2_REQUEST_TYPE rq)
 	return (rq < ARRAY_SIZE(opcodes)) ? opcodes[rq] : IBV_WC_SEND;
 }
 
+static enum ibv_wc_status vrb_ndstatus2status(HRESULT status)
+{
+	switch (status) {
+	case ND_SUCCESS:
+		return IBV_WC_SUCCESS;
+	case ND_DATA_OVERRUN:
+	case ND_BUFFER_OVERFLOW:
+		return IBV_WC_LOC_LEN_ERR;
+	case ND_ACCESS_VIOLATION:
+		return IBV_WC_LOC_PROT_ERR;
+	case ND_INVALID_DEVICE_REQUEST:
+	case ND_INTERNAL_ERROR:
+		return IBV_WC_LOC_QP_OP_ERR;
+	case ND_IO_TIMEOUT:
+		return IBV_WC_RESP_TIMEOUT_ERR;
+	case ND_REMOTE_ERROR:
+		return IBV_WC_REM_OP_ERR;
+	default:
+		return (enum ibv_wc_status)status;
+	}
+}
+
 struct ibv_device **ibv_get_device_list(int *num_devices)
 {
 	VRB_TRACE(FI_LOG_FABRIC, "\n");
@@ -416,17 +438,20 @@ int ibv_poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc)
 	}
 
 	cq_nd = container_of(cq, struct nd_cq, cq);
-	for (num_results = 0; num_results < num_entries; ++num_results) {
+	for (num_results = 0; num_results < num_entries; ) {
 		nResults = cq_nd->nd2cq->lpVtbl->GetResults(cq_nd->nd2cq,
 							    &result, 1);
 
 		if (nResults == 0)
 			break;
 
+		if (result.Status == ND_CANCELED)
+			continue;
+
 		memset(&wc[num_results], 0, sizeof(wc[num_results]));
 		wc[num_results].wr_id = (uint64_t)result.RequestContext;
 		wc[num_results].byte_len = result.BytesTransferred;
-		wc[num_results].status = result.Status;
+		wc[num_results].status = vrb_ndstatus2status(result.Status);
 		wc[num_results].opcode = vrb_ndrequest2opcode(result.RequestType);
 		FI_LOG(&vrb_prov, result.Status ? FI_LOG_WARN : FI_LOG_DEBUG,
 		       FI_LOG_CQ,
@@ -434,6 +459,7 @@ int ibv_poll_cq(struct ibv_cq *cq, int num_entries, struct ibv_wc *wc)
 		       "status=0x%08lx, request=0x%08lx\n",
 		       (uint64_t)result.RequestContext, result.BytesTransferred,
 		       result.Status, result.RequestType);
+		++num_results;
 	}
 
 	return num_results;
