@@ -1276,10 +1276,7 @@ static int vrb_eq_control(fid_t fid, int command, void *arg)
 	eq = container_of(fid, struct vrb_eq, eq_fid.fid);
 	switch (command) {
 	case FI_GETWAIT:
-#ifndef HAVE_EPOLL
-		/* We expect verbs to only run on systems with epoll */
-		return -FI_ENOSYS;
-#else
+#ifdef HAVE_EPOLL
 		if (eq->wait_obj == FI_WAIT_FD) {
 			*(int *) arg = eq->epollfd;
 			return 0;
@@ -1295,6 +1292,25 @@ static int vrb_eq_control(fid_t fid, int command, void *arg)
 		}
 		pollfd->change_index = 1;
 		pollfd->nfds = 1;
+
+#else
+		if (eq->wait_obj == FI_WAIT_FD) {
+			ret = -FI_ENOSYS;
+			break;
+		}
+
+		pollfd = arg;
+		if (pollfd->nfds >= 2) {
+			pollfd->fd[0].fd = eq->channel->fd;
+			pollfd->fd[0].events = POLLIN;
+			pollfd->fd[1].fd = eq->list_head.signal.fd[FI_READ_FD];
+			pollfd->fd[1].events = POLLIN;
+			ret = 0;
+		} else {
+			ret = -FI_ETOOSMALL;
+		}
+		pollfd->change_index = 1;
+		pollfd->nfds = 2;
 #endif
 		break;
 	case FI_GETWAITOBJ:
