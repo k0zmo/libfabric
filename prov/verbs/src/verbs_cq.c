@@ -308,12 +308,12 @@ void vrb_cleanup_cq(struct vrb_ep *ep)
 {
 	assert(ofi_genlock_held(vrb_ep2_progress(ep)->active_lock));
 	if (ep->util_ep.rx_cq) {
-		vrb_flush_cq(container_of(ep->util_ep.rx_cq,
-					  struct vrb_cq, util_cq));
+		//vrb_flush_cq(container_of(ep->util_ep.rx_cq,
+		//			  struct vrb_cq, util_cq));
 	}
 	if (ep->util_ep.tx_cq) {
-		vrb_flush_cq(container_of(ep->util_ep.tx_cq,
-					  struct vrb_cq, util_cq));
+		//vrb_flush_cq(container_of(ep->util_ep.tx_cq,
+		//			  struct vrb_cq, util_cq));
 	}
 }
 
